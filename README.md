@@ -55,7 +55,7 @@ python3 scripts/build.py
 ```
 
 This fetches the latest upstream `main`, regenerates both themes in `dist/`,
-validates them, compiles them with `hyprcursor-util`, and creates:
+compiles them with `hyprcursor-util`, validates the result, and creates:
 
 ```text
 dist/MacTahoe-hyprcursor/
@@ -129,9 +129,10 @@ that use XCursor instead of Hyprcursor can use the XCursor themes shipped in
 the upstream submodule:
 
 ```bash
-mkdir -p ~/.local/share/icons
-cp -r upstream/MacTahoe-icon-theme/cursors/dist      ~/.local/share/icons/MacTahoe-cursors
-cp -r upstream/MacTahoe-icon-theme/cursors/dist-dark ~/.local/share/icons/MacTahoe-dark-cursors
+mkdir -p ~/.local/share/icons/MacTahoe-cursors
+mkdir -p ~/.local/share/icons/MacTahoe-dark-cursors
+cp -r upstream/MacTahoe-icon-theme/cursors/dist/.      ~/.local/share/icons/MacTahoe-cursors/
+cp -r upstream/MacTahoe-icon-theme/cursors/dist-dark/. ~/.local/share/icons/MacTahoe-dark-cursors/
 ```
 
 Then configure the matching fallback:
