@@ -74,14 +74,18 @@ jobs:
           tag="${{ steps.upstream.outputs.tag }}"
           revision="${{ steps.upstream.outputs.revision }}"
           version="$(cat VERSION)"
-          notes="Automated Hyprcursor conversion of the MacTahoe cursor theme.
+
+          cat > /tmp/release-notes.md <<EOF
+          Automated Hyprcursor conversion of the MacTahoe cursor theme.
 
           Upstream: https://github.com/vinceliuice/MacTahoe-icon-theme
           Upstream commit: $revision
           Project version: $version
           Variants: MacTahoe-hyprcursor (light), MacTahoe-dark-hyprcursor (dark)
 
-          Generated assets are not committed; releases are the distribution mechanism."
+          Generated assets are not committed; releases are the distribution mechanism.
+          EOF
+
           gh release create "$tag" dist/*.tar.gz \
             --title "MacTahoe Hyprcursor $version (${revision:0:7})" \
-            --notes "$notes"
+            --notes-file /tmp/release-notes.md
