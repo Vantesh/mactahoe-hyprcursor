@@ -24,7 +24,8 @@ license text.
 
 The upstream repository is included as a Git submodule at
 `upstream/MacTahoe-icon-theme`. It tracks `main`; the build fetches the latest
-upstream revision. Upstream files are never modified.
+upstream revision. Upstream files are never modified. Each release archive
+contains `COPYING` and `NOTICE` alongside the compiled theme.
 
 ## Dependencies
 

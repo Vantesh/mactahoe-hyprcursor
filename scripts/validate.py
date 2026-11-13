@@ -314,6 +314,16 @@ def validate_theme(
         except (json.JSONDecodeError, OSError) as error:
             errors.append(f"{theme_name}: invalid build-info.json: {error}")
 
+    for filename in ("COPYING", "NOTICE"):
+        packaged = theme_dir / filename
+        if not packaged.is_file():
+            errors.append(f"{theme_name}: missing {filename}")
+        else:
+            check(
+                packaged.read_bytes() == (ROOT / filename).read_bytes(),
+                f"{theme_name}: packaged {filename} differs from repository copy",
+            )
+
     cursors_dir = theme_dir / "hyprcursors"
     if not cursors_dir.is_dir():
         errors.append(f"{theme_name}: missing hyprcursors directory")

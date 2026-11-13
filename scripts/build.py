@@ -386,6 +386,13 @@ def write_build_info(theme_dir: Path, info: dict) -> None:
     os.utime(path, (FIXED_MTIME, FIXED_MTIME))
 
 
+def copy_distribution_files(theme_dir: Path) -> None:
+    for filename in ("COPYING", "NOTICE"):
+        target = theme_dir / filename
+        shutil.copyfile(ROOT / filename, target)
+        os.utime(target, (FIXED_MTIME, FIXED_MTIME))
+
+
 def create_archive(theme_name: str) -> Path:
     source = DIST / theme_name
     archive = DIST / f"{theme_name}.tar.gz"
@@ -444,6 +451,7 @@ def main() -> int:
         raise BuildError("upstream revision changed while building")
     for theme_name, theme_dir in compiled.items():
         write_build_info(theme_dir, info)
+        copy_distribution_files(theme_dir)
     write_build_info(DIST, info)
 
     run([sys.executable, str(ROOT / "scripts" / "validate.py")])
