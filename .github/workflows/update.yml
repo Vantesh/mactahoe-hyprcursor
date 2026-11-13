@@ -1,0 +1,87 @@
+name: Update and release
+
+on:
+  schedule:
+    # Check upstream once a day (04:17 UTC).
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-release
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Install build dependencies
+        run: >-
+          pacman -Syu --noconfirm --needed
+          git nodejs python hyprcursor github-cli
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check upstream revision
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream/MacTahoe-icon-theme fetch --quiet origin main
+          git -C upstream/MacTahoe-icon-theme checkout --quiet --detach FETCH_HEAD
+
+          revision="$(git -C upstream/MacTahoe-icon-theme rev-parse HEAD)"
+          tag="v$(cat VERSION)-${revision:0:12}"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Upstream $revision is already published as $tag; nothing to do."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream $revision has no release yet; building $tag."
+          fi
+
+      - name: Build and validate both themes
+        if: steps.upstream.outputs.skip != 'true'
+        run: python scripts/build.py --no-fetch
+
+      - name: Verify reproducible archives
+        if: steps.upstream.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum dist/*.tar.gz > /tmp/archives.sha256
+          python scripts/build.py --no-fetch
+          sha256sum --check /tmp/archives.sha256
+
+      - name: Publish release
+        if: steps.upstream.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.upstream.outputs.tag }}"
+          revision="${{ steps.upstream.outputs.revision }}"
+          version="$(cat VERSION)"
+          notes="Automated Hyprcursor conversion of the MacTahoe cursor theme.
+
+          Upstream: https://github.com/vinceliuice/MacTahoe-icon-theme
+          Upstream commit: $revision
+          Project version: $version
+          Variants: MacTahoe-hyprcursor (light), MacTahoe-dark-hyprcursor (dark)
+
+          Generated assets are not committed; releases are the distribution mechanism."
+          gh release create "$tag" dist/*.tar.gz \
+            --title "MacTahoe Hyprcursor $version (${revision:0:7})" \
+            --notes "$notes"

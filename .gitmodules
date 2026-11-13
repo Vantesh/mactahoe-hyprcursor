@@ -1,0 +1,4 @@
+[submodule "upstream/MacTahoe-icon-theme"]
+	path = upstream/MacTahoe-icon-theme
+	url = https://github.com/vinceliuice/MacTahoe-icon-theme
+	branch = main
