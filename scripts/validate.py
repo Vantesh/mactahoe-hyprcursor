@@ -16,6 +16,8 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
+from animation import complete_loop
+
 ROOT = Path(__file__).resolve().parent.parent
 UPSTREAM = ROOT / "upstream" / "MacTahoe-icon-theme"
 CURSOR_SRC = UPSTREAM / "cursors" / "src"
@@ -129,7 +131,11 @@ def source_metadata() -> tuple[dict[str, list[dict]], dict[str, str], str]:
             errors.append(f"{name}: animated cursor has no delays")
 
         if f"{name}.svg" in {frame["filename"] for frame in metadata}:
-            base[name] = metadata
+            # Only real cursors: alias directories also carry frame lists.
+            try:
+                base[name] = complete_loop(name, metadata, CURSOR_SRC / "svg")
+            except ValueError as error:
+                errors.append(str(error))
 
     aliases = source_aliases(set(base), all_scalable_dirs)
 

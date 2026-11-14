@@ -20,6 +20,8 @@ import tarfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from animation import complete_loop
+
 ROOT = Path(__file__).resolve().parent.parent
 UPSTREAM = ROOT / "upstream" / "MacTahoe-icon-theme"
 CURSOR_SRC = UPSTREAM / "cursors" / "src"
@@ -205,7 +207,11 @@ def load_source() -> tuple[dict[str, list[dict]], dict[str, str]]:
             raise BuildError(f"cannot read {metadata_path}: {error}") from error
         validate_metadata(name, metadata)
         if f"{name}.svg" in {frame["filename"] for frame in metadata}:
-            base[name] = metadata
+            # Only real cursors: alias directories also carry frame lists.
+            try:
+                base[name] = complete_loop(name, metadata, CURSOR_SRC / "svg")
+            except ValueError as error:
+                raise BuildError(str(error)) from error
 
     if not base:
         raise BuildError("no base cursors found in upstream scalable directory")
