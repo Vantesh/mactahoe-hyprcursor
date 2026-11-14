@@ -1,6 +1,14 @@
 name: Update and release
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - VERSION
+      # Exercise workflow edits too; the tag/release check makes repeat
+      # runs a no-op until either the version or upstream changes.
+      - .github/workflows/release.yml
   schedule:
     # Check upstream once a day (04:17 UTC).
     - cron: "17 4 * * *"
