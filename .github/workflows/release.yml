@@ -32,6 +32,13 @@ jobs:
         with:
           submodules: recursive
 
+      # The job container runs as root, but the mounted workspace is owned by
+      # the runner user. Without this, git refuses to write to the repository.
+      - name: Trust workspace for git
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/upstream/MacTahoe-icon-theme"
+
       - name: Check upstream revision
         id: upstream
         shell: bash
