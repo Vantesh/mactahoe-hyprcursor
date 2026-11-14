@@ -45,13 +45,40 @@ jobs:
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-          if gh release view "$tag" >/dev/null 2>&1; then
+          # Publish only once per upstream revision. Requiring both the tag and
+          # the release means a run that tagged but failed to publish retries
+          # instead of being skipped forever.
+          has_tag=false
+          has_release=false
+          git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 && has_tag=true
+          gh release view "$tag" >/dev/null 2>&1 && has_release=true
+
+          if [ "$has_tag" = true ] && [ "$has_release" = true ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Upstream $revision is already published as $tag; nothing to do."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "Upstream $revision has no release yet; building $tag."
+            echo "Upstream $revision is not fully published yet (tag=$has_tag, release=$has_release); building $tag."
           fi
+
+      - name: Commit upstream submodule pointer
+        if: steps.upstream.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          revision="${{ steps.upstream.outputs.revision }}"
+          current="$(git ls-tree HEAD -- upstream/MacTahoe-icon-theme | awk '{print $3}')"
+          if [ "$current" = "$revision" ]; then
+            echo "Submodule pointer already records $revision."
+            exit 0
+          fi
+
+          git add upstream/MacTahoe-icon-theme
+          git commit -m "Update upstream to ${revision:0:12}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Build and validate both themes
         if: steps.upstream.outputs.skip != 'true'
@@ -66,7 +93,7 @@ jobs:
           python scripts/build.py --no-fetch
           sha256sum --check /tmp/archives.sha256
 
-      - name: Publish release
+      - name: Create tag and publish release
         if: steps.upstream.outputs.skip != 'true'
         shell: bash
         run: |
@@ -75,17 +102,31 @@ jobs:
           revision="${{ steps.upstream.outputs.revision }}"
           version="$(cat VERSION)"
 
-          cat > /tmp/release-notes.md <<EOF
-          Automated Hyprcursor conversion of the MacTahoe cursor theme.
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists; reusing it."
+          else
+            git tag -a "$tag" -m "MacTahoe Hyprcursor $version (upstream ${revision:0:12})"
+            git push origin "refs/tags/$tag"
+          fi
 
-          Upstream: https://github.com/vinceliuice/MacTahoe-icon-theme
-          Upstream commit: $revision
-          Project version: $version
-          Variants: MacTahoe-hyprcursor (light), MacTahoe-dark-hyprcursor (dark)
-
-          Generated assets are not committed; releases are the distribution mechanism.
-          EOF
+          {
+            echo "Automated Hyprcursor conversion of the MacTahoe cursor theme."
+            echo
+            echo "- Upstream: https://github.com/vinceliuice/MacTahoe-icon-theme"
+            echo "- Upstream commit: \`$revision\`"
+            echo "- Project version: \`$version\`"
+            echo "- Variants: \`MacTahoe-hyprcursor\` (light), \`MacTahoe-dark-hyprcursor\` (dark)"
+            echo
+            echo "Generated assets are not committed; releases are the distribution mechanism."
+            echo
+            echo "SHA-256:"
+            echo
+            echo '```'
+            (cd dist && sha256sum ./*.tar.gz)
+            echo '```'
+          } > /tmp/release-notes.md
 
           gh release create "$tag" dist/*.tar.gz \
+            --verify-tag \
             --title "MacTahoe Hyprcursor $version (${revision:0:7})" \
             --notes-file /tmp/release-notes.md

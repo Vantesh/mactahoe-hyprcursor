@@ -88,14 +88,18 @@ The workflow:
 
 1. Fetches upstream `main`.
 2. Derives the release tag `v<project-version>-<upstream-short-sha>`.
-3. Skips the build if that tag already exists.
-4. Builds and validates both themes.
-5. Compiles both themes with `hyprcursor-util`.
-6. Rebuilds once and verifies the archives are byte-identical.
-7. Publishes both archives only if all previous steps succeeded.
+3. Skips the build when both that tag and its release already exist.
+4. Commits the updated upstream submodule pointer, so each tag pins the exact
+   upstream revision in git history.
+5. Builds and validates both themes.
+6. Compiles both themes with `hyprcursor-util`.
+7. Rebuilds once and verifies the archives are byte-identical.
+8. Creates an annotated tag, then publishes both archives only if all previous
+   steps succeeded. The release notes list the SHA-256 checksums.
 
-The upstream commit is recorded in the release tag/notes and in the
-`build-info.json` file inside each theme and each release archive.
+The upstream commit is recorded in the tag name, the tag message, the release
+notes, and the `build-info.json` file inside each theme and each release
+archive.
 
 Download release archives from the repository's **Releases** page.
 
