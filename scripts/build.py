@@ -270,7 +270,7 @@ def load_aliases(base_names: set[str], all_scalable_dirs: set[str]) -> dict[str,
     return resolved
 
 
-def format_integer(value: int | float) -> str:
+def format_integer(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else repr(float(value))
 
 
