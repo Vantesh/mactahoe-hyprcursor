@@ -43,7 +43,9 @@ class BuildError(Exception):
 
 def run(command: list[str]) -> None:
     print("+ " + " ".join(command), flush=True)
-    subprocess.run(command, check=True)
+    # .hlc zips store local-time DOS timestamps; pin the zone so output is
+    # identical on every machine.
+    subprocess.run(command, check=True, env={**os.environ, "TZ": "UTC"})
 
 
 def update_upstream(fetch: bool) -> str:
@@ -110,9 +112,7 @@ def svg_viewbox(path: Path) -> tuple[float, float, float, float]:
     raise BuildError(f"SVG has no usable dimensions: {path}")
 
 
-def cursor_geometry(
-    metadata: list[dict], variant_dir: Path
-) -> tuple[float, float, float]:
+def cursor_geometry(metadata: list[dict], variant_dir: Path) -> tuple[float, float, float]:
     """Convert upstream cursor geometry to Hyprcursor's coordinate system.
 
     Upstream stores hotspots in SVG canvas pixels and a separate nominal size.
@@ -214,7 +214,8 @@ def load_source() -> tuple[dict[str, list[dict]], dict[str, str]]:
 
     cursor_svg_file = CURSOR_SRC / "cursorSVG"
     if cursor_svg_file.exists():
-        named = {line.strip() for line in cursor_svg_file.read_text(encoding="utf-8").splitlines() if line.strip()}
+        names = cursor_svg_file.read_text(encoding="utf-8").splitlines()
+        named = {line.strip() for line in names if line.strip()}
         missing = sorted(named - set(base))
         if missing:
             raise BuildError(f"cursorSVG entries have no base cursor: {', '.join(missing)}")
@@ -252,7 +253,7 @@ def load_aliases(base_names: set[str], all_scalable_dirs: set[str]) -> dict[str,
             if current not in aliases:
                 raise BuildError(f"alias {alias} points to unknown cursor {current}")
             if current in seen:
-                raise BuildError(f"alias cycle: {' -> '.join(seen + [current])}")
+                raise BuildError(f"alias cycle: {' -> '.join([*seen, current])}")
             seen.append(current)
             current = aliases[current]
         resolved[alias] = current
@@ -282,9 +283,9 @@ def write_meta(
 ) -> None:
     lines = [
         "resize_algorithm = none",
-        f"nominal_size = {repr(nominal_ratio)}",
-        f"hotspot_x = {repr(hotspot[0])}",
-        f"hotspot_y = {repr(hotspot[1])}",
+        f"nominal_size = {nominal_ratio!r}",
+        f"hotspot_x = {hotspot[0]!r}",
+        f"hotspot_y = {hotspot[1]!r}",
     ]
     lines.extend(f"define_override = {alias}" for alias in overrides)
     for frame in metadata:
@@ -353,9 +354,7 @@ def compile_theme(work_theme: Path, theme_name: str) -> Path:
 
     produced = compile_dir / f"theme_{theme_name}"
     if not produced.is_dir():
-        raise BuildError(
-            f"hyprcursor-util did not produce the expected directory: {produced}"
-        )
+        raise BuildError(f"hyprcursor-util did not produce the expected directory: {produced}")
 
     target = DIST / theme_name
     if target.exists():
@@ -396,27 +395,29 @@ def copy_distribution_files(theme_dir: Path) -> None:
 def create_archive(theme_name: str) -> Path:
     source = DIST / theme_name
     archive = DIST / f"{theme_name}.tar.gz"
-    entries = [source] + sorted(
-        source.rglob("*"), key=lambda item: item.relative_to(DIST).as_posix()
-    )
+    entries = [
+        source,
+        *sorted(source.rglob("*"), key=lambda item: item.relative_to(DIST).as_posix()),
+    ]
 
-    with archive.open("wb") as raw:
-        with gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=9, mtime=0, filename="") as gz:
-            with tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tar:
-                for path in entries:
-                    arcname = path.relative_to(DIST).as_posix()
-                    info = tar.gettarinfo(str(path), arcname)
-                    info.uid = 0
-                    info.gid = 0
-                    info.uname = ""
-                    info.gname = ""
-                    info.mtime = 0
-                    info.mode = 0o755 if path.is_dir() else 0o644
-                    if path.is_dir():
-                        tar.addfile(info)
-                    else:
-                        with path.open("rb") as handle:
-                            tar.addfile(info, handle)
+    with (
+        archive.open("wb") as raw,
+        gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=9, mtime=0, filename="") as gz,
+        tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tar,
+    ):
+        for path in entries:
+            info = tar.gettarinfo(str(path), path.relative_to(DIST).as_posix())
+            info.uid = 0
+            info.gid = 0
+            info.uname = ""
+            info.gname = ""
+            info.mtime = 0
+            info.mode = 0o755 if path.is_dir() else 0o644
+            if path.is_dir():
+                tar.addfile(info)
+            else:
+                with path.open("rb") as handle:
+                    tar.addfile(info, handle)
 
     return archive
 
@@ -449,7 +450,7 @@ def main() -> int:
     info = build_info()
     if info["upstream_revision"] != revision:
         raise BuildError("upstream revision changed while building")
-    for theme_name, theme_dir in compiled.items():
+    for theme_dir in compiled.values():
         write_build_info(theme_dir, info)
         copy_distribution_files(theme_dir)
     write_build_info(DIST, info)
@@ -475,4 +476,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (BuildError, subprocess.CalledProcessError) as error:
         print(f"\nERROR: {error}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from None

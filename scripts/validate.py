@@ -157,9 +157,7 @@ def source_aliases(base_names: set[str], all_scalable_dirs: set[str]) -> dict[st
     cursor_list = CURSOR_SRC / "cursorList"
     aliases: dict[str, str] = {}
 
-    for line_number, line in enumerate(
-        cursor_list.read_text(encoding="utf-8").splitlines(), 1
-    ):
+    for line_number, line in enumerate(cursor_list.read_text(encoding="utf-8").splitlines(), 1):
         line = line.strip()
         if not line:
             continue
@@ -183,7 +181,7 @@ def source_aliases(base_names: set[str], all_scalable_dirs: set[str]) -> dict[st
                 errors.append(f"alias {alias} points to unknown cursor {current}")
                 break
             if current in seen:
-                errors.append(f"alias cycle: {' -> '.join(seen + [current])}")
+                errors.append(f"alias cycle: {' -> '.join([*seen, current])}")
                 break
             seen.append(current)
             current = aliases[current]
@@ -235,9 +233,7 @@ def expected_geometry(
     return first[0], first[1], nominal_ratio
 
 
-def validate_sources(
-    base: dict[str, list[dict]], aliases: dict[str, str]
-) -> None:
+def validate_sources(base: dict[str, list[dict]], aliases: dict[str, str]) -> None:
     for variant in set(VARIANTS.values()):
         variant_dir = CURSOR_SRC / variant
         if not variant_dir.is_dir():
@@ -349,9 +345,7 @@ def validate_theme(
         try:
             with zipfile.ZipFile(hlc_path) as archive:
                 names = set(archive.namelist())
-                expected_files = {"meta.hl"} | {
-                    frame["filename"] for frame in metadata
-                }
+                expected_files = {"meta.hl"} | {frame["filename"] for frame in metadata}
                 check(
                     names == expected_files,
                     f"{theme_name}/{name}: unexpected files in .hlc: {sorted(names)}",
@@ -371,7 +365,8 @@ def validate_theme(
         check(meta.get("resize_algorithm") == ["none"], f"{theme_name}/{name}: resize_algorithm")
 
         expected_geom = expected_geometry(name, metadata, variant_dir)
-        if expected_geom and meta.get("nominal_size") and meta.get("hotspot_x") and meta.get("hotspot_y"):
+        has_geometry = all(meta.get(key) for key in ("nominal_size", "hotspot_x", "hotspot_y"))
+        if expected_geom and has_geometry:
             expected_hot = expected_geom[:2]
             try:
                 actual_hot = (
@@ -446,8 +441,7 @@ def main() -> int:
         return 1
 
     print(
-        f"Validation passed: {len(base)} base cursors, "
-        f"{len(aliases)} aliases, 2 compiled themes."
+        f"Validation passed: {len(base)} base cursors, {len(aliases)} aliases, 2 compiled themes."
     )
     return 0
 
