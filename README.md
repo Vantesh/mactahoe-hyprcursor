@@ -19,14 +19,20 @@ tar -xzf MacTahoe-hyprcursor.tar.gz -C ~/.local/share/icons
 
 ## Hyprland
 
-Add to `~/.config/hypr/hyprland.conf`:
+Add to `~/.config/hypr/hyprland.lua`:
 
-```ini
-env = HYPRCURSOR_THEME,MacTahoe-hyprcursor
-env = HYPRCURSOR_SIZE,24
+```lua
+hl.env("HYPRCURSOR_THEME", "MacTahoe-hyprcursor")
+hl.env("HYPRCURSOR_SIZE", "24")
 ```
 
 Use `MacTahoe-dark-hyprcursor` for the dark variant, then restart Hyprland.
+
+To switch cursors without restarting:
+
+```bash
+hyprctl setcursor MacTahoe-hyprcursor 24
+```
 
 ## XCursor fallback
 
@@ -40,9 +46,9 @@ cp -r upstream/MacTahoe-icon-theme/cursors/dist/.      ~/.local/share/icons/MacT
 cp -r upstream/MacTahoe-icon-theme/cursors/dist-dark/. ~/.local/share/icons/MacTahoe-dark-cursors/
 ```
 
-```ini
-env = XCURSOR_THEME,MacTahoe-cursors
-env = XCURSOR_SIZE,24
+```lua
+hl.env("XCURSOR_THEME", "MacTahoe-cursors")
+hl.env("XCURSOR_SIZE", "24")
 ```
 
 ## Build
