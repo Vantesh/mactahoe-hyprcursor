@@ -30,6 +30,11 @@ VARIANTS = {
     "MacTahoe-dark-hyprcursor": "svg-dark",
 }
 
+XCURSOR_VARIANTS = {
+    "MacTahoe-cursors": UPSTREAM / "cursors" / "dist",
+    "MacTahoe-dark-cursors": UPSTREAM / "cursors" / "dist-dark",
+}
+
 errors: list[str] = []
 
 
@@ -433,12 +438,57 @@ def validate_theme(
     )
 
 
+def validate_xcursor_theme(theme_name: str, upstream_dir: Path, revision: str) -> None:
+    theme_dir = DIST / theme_name
+    if not theme_dir.is_dir():
+        errors.append(f"missing generated XCursor theme: {theme_dir}")
+        return
+
+    if not upstream_dir.is_dir():
+        errors.append(f"missing upstream XCursor theme: {upstream_dir}")
+        return
+
+    for path in upstream_dir.rglob("*"):
+        relative = path.relative_to(upstream_dir)
+        packaged = theme_dir / relative
+        if path.is_dir():
+            check(packaged.is_dir(), f"{theme_name}: missing directory {relative}")
+        else:
+            check(packaged.is_file(), f"{theme_name}: missing file {relative}")
+            if packaged.is_file():
+                check(
+                    packaged.read_bytes() == path.read_bytes(),
+                    f"{theme_name}: upstream file changed: {relative}",
+                )
+
+    index_theme = theme_dir / "index.theme"
+    check(index_theme.is_file(), f"{theme_name}: missing index.theme")
+
+    build_info_path = theme_dir / "build-info.json"
+    if build_info_path.is_file():
+        try:
+            info = json.loads(build_info_path.read_text(encoding="utf-8"))
+            check(info.get("upstream_revision") == revision, f"{theme_name}: build-info upstream revision mismatch")
+            check(info.get("upstream_repository") == UPSTREAM_URL, f"{theme_name}: build-info upstream repository mismatch")
+            check(info.get("project_version") == VERSION, f"{theme_name}: build-info project version mismatch")
+        except (json.JSONDecodeError, OSError) as error:
+            errors.append(f"{theme_name}: invalid build-info.json: {error}")
+    else:
+        errors.append(f"{theme_name}: missing build-info.json")
+
+    for filename in ("COPYING", "NOTICE"):
+        packaged = theme_dir / filename
+        check(packaged.is_file(), f"{theme_name}: missing {filename}")
+
+
 def main() -> int:
     base, aliases, revision = source_metadata()
     if not errors:
         validate_sources(base, aliases)
         for theme_name, variant in VARIANTS.items():
             validate_theme(theme_name, variant, base, aliases, revision)
+        for theme_name, upstream_dir in XCURSOR_VARIANTS.items():
+            validate_xcursor_theme(theme_name, upstream_dir, revision)
 
     if errors:
         for error in errors:
@@ -447,7 +497,8 @@ def main() -> int:
         return 1
 
     print(
-        f"Validation passed: {len(base)} base cursors, {len(aliases)} aliases, 2 compiled themes."
+        f"Validation passed: {len(base)} base cursors, {len(aliases)} aliases, "
+        "2 Hyprcursor themes, 2 XCursor themes."
     )
     return 0
 

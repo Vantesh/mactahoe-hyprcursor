@@ -120,17 +120,18 @@ jobs:
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
             echo "Tag $tag already exists; reusing it."
           else
-            git tag -a "$tag" -m "MacTahoe Hyprcursor $version (upstream ${revision:0:12})"
+            git tag -a "$tag" -m "MacTahoe cursors $version (upstream ${revision:0:12})"
             git push origin "refs/tags/$tag"
           fi
 
           {
-            echo "Automated Hyprcursor conversion of the MacTahoe cursor theme."
+            echo "Automated Hyprcursor conversion and XCursor fallback packaging of the MacTahoe cursor theme."
             echo
             echo "- Upstream: https://github.com/vinceliuice/MacTahoe-icon-theme"
             echo "- Upstream commit: \`$revision\`"
             echo "- Project version: \`$version\`"
-            echo "- Variants: \`MacTahoe-hyprcursor\` (light), \`MacTahoe-dark-hyprcursor\` (dark)"
+            echo "- Hyprcursor variants: \`MacTahoe-hyprcursor\` (light), \`MacTahoe-dark-hyprcursor\` (dark)"
+            echo "- XCursor fallbacks: \`MacTahoe-cursors\` (light), \`MacTahoe-dark-cursors\` (dark)"
             echo
             echo "Generated assets are not committed; releases are the distribution mechanism."
             echo
@@ -143,5 +144,5 @@ jobs:
 
           gh release create "$tag" dist/*.tar.gz \
             --verify-tag \
-            --title "MacTahoe Hyprcursor $version (${revision:0:7})" \
+            --title "MacTahoe cursors $version (${revision:0:7})" \
             --notes-file /tmp/release-notes.md

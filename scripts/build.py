@@ -38,6 +38,11 @@ VARIANTS = {
     "MacTahoe-dark-hyprcursor": ("svg-dark", "dark"),
 }
 
+XCURSOR_VARIANTS = {
+    "MacTahoe-cursors": UPSTREAM / "cursors" / "dist",
+    "MacTahoe-dark-cursors": UPSTREAM / "cursors" / "dist-dark",
+}
+
 
 class BuildError(Exception):
     pass
@@ -461,12 +466,25 @@ def main() -> int:
         copy_distribution_files(theme_dir)
     write_build_info(DIST, info)
 
+    for theme_name, source in XCURSOR_VARIANTS.items():
+        if not source.is_dir():
+            raise BuildError(f"upstream XCursor theme not found: {source}")
+        target = DIST / theme_name
+        shutil.copytree(source, target, copy_function=shutil.copyfile)
+        set_fixed_mtimes(target)
+        copy_distribution_files(target)
+        write_build_info(target, info)
+
     run([sys.executable, str(ROOT / "scripts" / "validate.py")])
 
     shutil.rmtree(DIST / "work")
     shutil.rmtree(DIST / "_compile")
 
     for theme_name in VARIANTS:
+        archive = create_archive(theme_name)
+        print(f"Archive: {archive.relative_to(ROOT)}")
+
+    for theme_name in XCURSOR_VARIANTS:
         archive = create_archive(theme_name)
         print(f"Archive: {archive.relative_to(ROOT)}")
 

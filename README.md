@@ -9,13 +9,17 @@ It comes in two variants: `MacTahoe-hyprcursor` (light) and
 
 ## Install
 
-Download the archive for the variant you want from
+Download the archives for the variants you want from
 [Releases](https://github.com/Vantesh/mactahoe-hyprcursor/releases), then:
 
 ```bash
 mkdir -p ~/.local/share/icons
 tar -xzf MacTahoe-hyprcursor.tar.gz -C ~/.local/share/icons
+tar -xzf MacTahoe-cursors.tar.gz -C ~/.local/share/icons
 ```
+
+Use `MacTahoe-dark-hyprcursor.tar.gz` and `MacTahoe-dark-cursors.tar.gz` for the
+dark variants.
 
 ## Hyprland
 
@@ -36,14 +40,13 @@ hyprctl setcursor MacTahoe-hyprcursor 24
 
 ## XCursor fallback
 
-Some apps still use XCursor. The upstream submodule ships matching XCursor
-themes:
+Some apps still use XCursor. Download `MacTahoe-cursors.tar.gz` (or
+`MacTahoe-dark-cursors.tar.gz`) from Releases and extract it into
+`~/.local/share/icons`:
 
 ```bash
-mkdir -p ~/.local/share/icons/MacTahoe-cursors
-mkdir -p ~/.local/share/icons/MacTahoe-dark-cursors
-cp -r upstream/MacTahoe-icon-theme/cursors/dist/.      ~/.local/share/icons/MacTahoe-cursors/
-cp -r upstream/MacTahoe-icon-theme/cursors/dist-dark/. ~/.local/share/icons/MacTahoe-dark-cursors/
+mkdir -p ~/.local/share/icons
+tar -xzf MacTahoe-cursors.tar.gz -C ~/.local/share/icons
 ```
 
 ```lua
@@ -62,7 +65,8 @@ cd mactahoe-hyprcursor
 python3 scripts/build.py
 ```
 
-The themes are written to `dist/`.
+The themes are written to `dist/`. The build produces two Hyprcursor archives
+and two XCursor fallback archives.
 
 ## Releases
 
