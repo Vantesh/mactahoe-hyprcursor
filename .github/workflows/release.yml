@@ -6,8 +6,6 @@ on:
       - main
     paths:
       - VERSION
-      # Exercise workflow edits too; the tag/release check makes repeat
-      # runs a no-op until either the version or upstream changes.
       - .github/workflows/release.yml
   schedule:
     # Check upstream once a week (Mondays at 04:17 UTC).
@@ -29,6 +27,7 @@ jobs:
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
+
     steps:
       - name: Install build dependencies
         run: >-
@@ -39,9 +38,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      # The job container runs as root, but the mounted workspace is owned by
-      # the runner user. Without this, git refuses to write to the repository.
       - name: Trust workspace for git
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -52,47 +50,95 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git -C upstream/MacTahoe-icon-theme fetch --quiet origin main
-          git -C upstream/MacTahoe-icon-theme checkout --quiet --detach FETCH_HEAD
 
-          revision="$(git -C upstream/MacTahoe-icon-theme rev-parse HEAD)"
-          tag="v$(cat VERSION)-${revision:0:12}"
-          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          upstream="upstream/MacTahoe-icon-theme"
+
+          version="$(tr -d '[:space:]' < VERSION)"
+          version="${version#v}"
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION must contain a semantic version (for example 1.0.3)."
+            exit 1
+          fi
+
+          tag="v${version}"
+
+          # Preserve the previous upstream revision for changelog generation.
+          previous_revision="$(git ls-tree HEAD -- "$upstream" | awk '{print $3}')"
+
+          if [ -z "$previous_revision" ]; then
+            echo "::error::Could not determine the previous upstream submodule revision."
+            exit 1
+          fi
+
+          # Fetch complete upstream history for reliable changelog generation.
+          if [ "$(git -C "$upstream" rev-parse --is-shallow-repository)" = true ]; then
+            git -C "$upstream" fetch --quiet --unshallow origin main
+          else
+            git -C "$upstream" fetch --quiet origin main
+          fi
+
+          git -C "$upstream" checkout --quiet --detach FETCH_HEAD
+
+          revision="$(git -C "$upstream" rev-parse HEAD)"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "previous_revision=$previous_revision" >> "$GITHUB_OUTPUT"
 
-          # Publish only once per upstream revision. Requiring both the tag and
-          # the release means a run that tagged but failed to publish retries
-          # instead of being skipped forever.
-          has_tag=false
+          # Check whether this exact release already exists.
+          remote_tag=false
           has_release=false
-          git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 && has_tag=true
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            remote_tag=true
+            git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"
+          fi
+
           gh release view "$tag" >/dev/null 2>&1 && has_release=true
 
-          if [ "$has_tag" = true ] && [ "$has_release" = true ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Upstream $revision is already published as $tag; nothing to do."
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "Upstream $revision is not fully published yet (tag=$has_tag, release=$has_release); building $tag."
+          if [ "$remote_tag" = true ]; then
+            tagged_revision="$(git ls-tree "$tag" -- "$upstream" | awk '{print $3}')"
+
+            if [ "$tagged_revision" != "$revision" ]; then
+              echo "::error::Release $tag already points to a different upstream revision."
+              echo "::error::Bump VERSION before publishing another upstream update."
+              exit 1
+            fi
           fi
+
+          if [ "$remote_tag" = true ] && [ "$has_release" = true ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release $tag already exists for upstream $revision."
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Preparing release $tag."
+          echo "Previous upstream: $previous_revision"
+          echo "Current upstream:  $revision"
 
       - name: Commit upstream submodule pointer
         if: steps.upstream.outputs.skip != 'true'
         shell: bash
+        env:
+          REVISION: ${{ steps.upstream.outputs.revision }}
         run: |
           set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          revision="${{ steps.upstream.outputs.revision }}"
           current="$(git ls-tree HEAD -- upstream/MacTahoe-icon-theme | awk '{print $3}')"
-          if [ "$current" = "$revision" ]; then
-            echo "Submodule pointer already records $revision."
+
+          if [ "$current" = "$REVISION" ]; then
+            echo "Submodule pointer already records $REVISION."
             exit 0
           fi
 
           git add upstream/MacTahoe-icon-theme
-          git commit -m "Update upstream to ${revision:0:12}"
+          git commit -m "Update upstream to ${REVISION:0:12}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Build and validate both themes
@@ -104,45 +150,98 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           sha256sum dist/*.tar.gz > /tmp/archives.sha256
+
           python scripts/build.py --no-fetch
+
           sha256sum --check /tmp/archives.sha256
 
-      - name: Create tag and publish release
+      - name: Generate release notes
         if: steps.upstream.outputs.skip != 'true'
+        id: notes
         shell: bash
+        env:
+          PREVIOUS_REVISION: ${{ steps.upstream.outputs.previous_revision }}
+          REVISION: ${{ steps.upstream.outputs.revision }}
+          VERSION: ${{ steps.upstream.outputs.version }}
         run: |
           set -euo pipefail
-          tag="${{ steps.upstream.outputs.tag }}"
-          revision="${{ steps.upstream.outputs.revision }}"
-          version="$(cat VERSION)"
 
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "Tag $tag already exists; reusing it."
-          else
-            git tag -a "$tag" -m "MacTahoe cursors $version (upstream ${revision:0:12})"
-            git push origin "refs/tags/$tag"
-          fi
+          upstream="upstream/MacTahoe-icon-theme"
 
           {
             echo "Automated Hyprcursor conversion and XCursor fallback packaging of the MacTahoe cursor theme."
             echo
+
+            echo "## Release"
+            echo
+            echo "- Version: \`v${VERSION}\`"
             echo "- Upstream: https://github.com/vinceliuice/MacTahoe-icon-theme"
-            echo "- Upstream commit: \`$revision\`"
-            echo "- Project version: \`$version\`"
-            echo "- Hyprcursor variants: \`MacTahoe-hyprcursor\` (light), \`MacTahoe-dark-hyprcursor\` (dark)"
-            echo "- XCursor fallbacks: \`MacTahoe-cursors\` (light), \`MacTahoe-dark-cursors\` (dark)"
+            echo "- Upstream commit: [\`${REVISION:0:12}\`](https://github.com/vinceliuice/MacTahoe-icon-theme/commit/${REVISION})"
             echo
-            echo "Generated assets are not committed; releases are the distribution mechanism."
+
+            echo "## Changelog"
             echo
-            echo "SHA-256:"
+
+            if [ "$PREVIOUS_REVISION" = "$REVISION" ]; then
+              echo "No upstream changes since the previous release."
+            else
+              changelog="$(git -C "$upstream" log \
+                --format='- %s (%h)' \
+                "$PREVIOUS_REVISION..$REVISION")"
+
+              if [ -n "$changelog" ]; then
+                printf '%s\n' "$changelog"
+              else
+                echo "No individual commits to list."
+              fi
+
+              echo
+              echo "[Full changelog](https://github.com/vinceliuice/MacTahoe-icon-theme/compare/${PREVIOUS_REVISION}...${REVISION})"
+            fi
+
             echo
-            echo '```'
+            echo "## Included assets"
+            echo
+            echo "- Hyprcursor (light): \`MacTahoe-hyprcursor\`"
+            echo "- Hyprcursor (dark): \`MacTahoe-dark-hyprcursor\`"
+            echo "- XCursor fallback (light): \`MacTahoe-cursors\`"
+            echo "- XCursor fallback (dark): \`MacTahoe-dark-cursors\`"
+            echo
+
+            echo "Generated assets are not committed; GitHub releases are the distribution mechanism."
+            echo
+
+            echo "## SHA-256"
+            echo
+            echo '```text'
             (cd dist && sha256sum ./*.tar.gz)
             echo '```'
+
           } > /tmp/release-notes.md
 
-          gh release create "$tag" dist/*.tar.gz \
+      - name: Create tag and publish release
+        if: steps.upstream.outputs.skip != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+          REVISION: ${{ steps.upstream.outputs.revision }}
+        run: |
+          set -euo pipefail
+
+          # Create an immutable, version-only tag.
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists; reusing it."
+          else
+            git tag -a "$TAG" \
+              -m "$TAG"
+
+            git push origin "refs/tags/$TAG"
+          fi
+
+          # Publish the release using the exact same version as the tag.
+          gh release create "$TAG" dist/*.tar.gz \
             --verify-tag \
-            --title "MacTahoe cursors $version (${revision:0:7})" \
+            --title "$TAG" \
             --notes-file /tmp/release-notes.md
